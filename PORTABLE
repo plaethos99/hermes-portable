@@ -1,0 +1,1 @@
+This checkout is portable. Hermes data, the Electron profile, and scratch files live in runtime\ next to this file. Set HERMES_PORTABLE=0 before launch to opt out. HERMES_DESKTOP_SANDBOX=1 also opts out so the sandbox launcher can keep its own home.

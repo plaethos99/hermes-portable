@@ -2,6 +2,11 @@ import { resolve } from "path";
 import { defineConfig } from "electron-vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
+import { activatePortableEnv } from "./src/main/portable-layout";
+
+// Chromium reads TEMP at process start. Set it before electron-vite spawns
+// Electron so scratch files stay under runtime/ instead of the system temp.
+activatePortableEnv(process.env, process.cwd());
 
 const rendererPort = Number(process.env.HERMES_DESKTOP_RENDERER_PORT || 0);
 

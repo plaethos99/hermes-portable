@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 2,
+  "commit": "9a0a1625367242596d338ae2da541c4a1fc785a2",
+  "commitDate": 1790563687,
+  "branch": "main",
+  "builtAt": "2026-09-28T18:07:31.882208+00:00",
+  "dirty": false,
+  "source": "git",
+  "distribution": null,
+  "updateMechanism": "self",
+  "baseVersion": "0.21.5",
+  "displayVersion": "0.21.5+3840.g9a0a162",
+  "distance": 3840,
+  "payload": "bootstrap",
+  "tag": null
+}

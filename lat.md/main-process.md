@@ -1,4 +1,4 @@
-# Main Process
+﻿# Main Process
 
 The Electron main process keeps the entrypoint small and separates app lifecycle from IPC registration.
 
@@ -7,6 +7,32 @@ The Electron main process keeps the entrypoint small and separates app lifecycle
 `src/main/index.ts` performs only pre-ready setup and delegates startup.
 
 [[src/main/index.ts]] applies GPU crash preferences, enables the optional CDP testing port, and calls [[src/main/app/start.ts#startMainProcess]]. This keeps one-off process boot concerns separate from windows, menus, updater wiring, and IPC.
+
+[[src/main/index.ts]] imports [[src/main/portable-paths.ts#installPortablePaths]] before anything else so the portable root is in place before [[src/main/installer.ts]] captures `HERMES_HOME`.
+
+## Portable runtime
+
+A `PORTABLE` marker at the checkout or beside the executable keeps the Hermes home, Electron profile, and scratch files under that root's `runtime/` directory instead of AppData or the system temp folder.
+
+[[src/main/portable-layout.ts#resolvePortableLayout]] turns the marker (or `HERMES_PORTABLE_ROOT`) into `runtime/hermes`, `runtime/electron`, and `runtime/scratch`. [[src/main/portable-layout.ts#applyPortableProcessEnv]] writes those paths into `HERMES_HOME`, `HERMES_DESKTOP_USER_DATA_DIR`, `TEMP`/`TMP`/`TMPDIR`, and the uv, pip, and Electron caches before Chromium starts. An existing home is kept only when it is already inside the portable root, so a `C:` install cannot pull data back. `HERMES_PORTABLE=0` and `HERMES_DESKTOP_SANDBOX=1` skip this so a normal install or the sandbox launcher can choose its own home. `scripts/run-portable.mjs` applies the same env before `electron-vite` or `electron-builder`, because setting `TEMP` from inside Electron is too late for Chromium's process-start temp directory. `PYTHONNOUSERSITE=1` keeps Python off the system per-user site directory.
+
+## Bundled agent
+
+The portable home ships its own agent checkout and interpreter, so startup does not offer a separate Hermes install.
+
+`runtime/hermes/hermes-agent` is the agent source plus its virtual environment, and `runtime/python` is a relocatable CPython 3.14. Windows venv launchers require an absolute `home`, so [[src/main/portable-layout.ts#writeBundledPyvenv]] rewrites `pyvenv.cfg` to this folder's interpreter on every launch. [[src/main/installer.ts#checkInstallStatus]] treats `venv/Scripts/pythonw.exe` and `hermes.exe` as the installed agent and skips the welcome installer. `Run-Portable.cmd` sets the portable env and starts Electron directly, so the other machine does not need Node.
+
+## Portable launcher
+
+`Hermes.exe` is the file you double-click. It keeps the agent, Electron profile, and scratch files in the same folder as the exe, then starts the bundled app without an installer or a download.
+
+[[scripts/portable-launcher/main.go#main]] resolves the exe's own directory, rewrites the Python virtual environment to `runtime/python`, ensures a local `API_SERVER_KEY` in `.env`, and starts `app/hermes-agent.exe` passing `--user-data-dir` directly so Chromium never probes `%APPDATA%`. It sets `HERMES_DISABLE_LAZY_INSTALLS=1`, `UV_OFFLINE=1`, `PIP_NO_INDEX=1`, and drops inherited credentials so the process is sandboxed and never attempts network downloads. `dist/HermesPortable` is a self-contained, clean home: the full agent runtime and API SDKs are bundled, with no profiles or personal keys copied in. Copy that folder and click `Hermes.exe`.
+
+## Portable build inputs in git
+
+The repo commits what `scripts/build-portable.ps1` needs, not its output: `runtime/python` and `runtime/hermes/hermes-agent`, the agent checkout with its venv.
+
+`runtime/` stays gitignored because it doubles as the dev Hermes home. `scripts/stage-portable.ps1` force-adds only those two folders, because the agent's nested `.gitignore` files would drop `venv/` and `node_modules/`. It parks the agent's own `.git` during the add so git does not record an embedded repo, and it leaves out bytecode and the npm workspace junctions. `.gitattributes` stores both folders with `-text -eol`. On a fresh clone, `build-portable.ps1` rewrites `venv/pyvenv.cfg` to the cloned interpreter and recreates the junctions.
 
 ## GPU Fallback
 

@@ -28,6 +28,9 @@ pnpm-debug.log*
 # Local isolated Hermes homes for development/tests
 .sandbox/
 
+# Portable runtime (Hermes home, Electron profile, scratch). Never commit.
+runtime/
+
 # Electron packaging artifacts
 release/
 .claude/worktrees
@@ -41,3 +44,6 @@ release/
 /*.bat
 /*.ps1
 .mcp.json
+
+# Built by scripts/build-portable.ps1
+/Hermes.exe

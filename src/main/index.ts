@@ -1,3 +1,6 @@
+// Must stay the first import. It redirects userData and HERMES_HOME before
+// installer.ts captures them and before the GPU flag path is resolved.
+import "./portable-paths";
 import { app } from "electron";
 import { applyGpuPreferences, installGpuCrashGuard } from "./gpu-fallback";
 import { startMainProcess } from "./app/start";

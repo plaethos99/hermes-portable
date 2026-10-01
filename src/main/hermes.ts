@@ -32,6 +32,7 @@ import {
   getConfigValue,
   getModelConfig,
   readEnv,
+  setEnvValue,
   type ConnectionConfig,
 } from "./config";
 import {
@@ -3502,7 +3503,18 @@ export function buildGatewayEnv(profile?: string): Record<string, string> {
   // gateway's `os.getenv("API_SERVER_KEY")` fallback see whatever the
   // desktop sees, regardless of source. This is the canonical fix until
   // upstream learns to read `api_server.token` directly.
-  const resolvedApiServerKey = getApiServerKey(profile);
+  let resolvedApiServerKey = getApiServerKey(profile);
+  if (!resolvedApiServerKey && !isRemoteMode()) {
+    resolvedApiServerKey = `desk-${randomUUID()}`;
+    try {
+      setEnvValue("API_SERVER_KEY", resolvedApiServerKey, profile);
+      if (profile && profile !== "default") {
+        setEnvValue("API_SERVER_KEY", resolvedApiServerKey);
+      }
+    } catch {
+      // best effort
+    }
+  }
   if (resolvedApiServerKey) {
     gatewayEnv.API_SERVER_KEY = resolvedApiServerKey;
   }

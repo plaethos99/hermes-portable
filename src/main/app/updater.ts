@@ -47,7 +47,8 @@ export function setupUpdater({ getMainWindow }: UpdaterDeps): void {
     return true;
   });
 
-  const isPortableBuild = !!process.env.PORTABLE_EXECUTABLE_DIR;
+  const isPortableBuild =
+    !!process.env.PORTABLE_EXECUTABLE_DIR || process.env.HERMES_PORTABLE === "1";
   if (!app.isPackaged || isPortableBuild) {
     autoUpdaterInstance = null;
     ipcMain.handle("check-for-updates", async () => null);

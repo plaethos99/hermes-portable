@@ -18,6 +18,13 @@ files:
   - "!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}"
   - "!{.env,.env.*,.npmrc,pnpm-lock.yaml}"
   - "!{tsconfig.json,tsconfig.node.json,tsconfig.web.json}"
+  - "!runtime/**"
+  - "!dist/**"
+  - "!tests/**"
+  - "!docs/**"
+  - "!scripts/**"
+  - "!**/.git/**"
+  - "!Hermes.exe"
 asarUnpack:
   - resources/**
   - node_modules/better-sqlite3/prebuilds/*.node
