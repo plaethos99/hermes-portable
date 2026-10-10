@@ -192,6 +192,17 @@ export const HERMES_VENV = join(HERMES_REPO, "venv");
 export const HERMES_PYTHON = IS_WINDOWS
   ? join(HERMES_VENV, "Scripts", "pythonw.exe")
   : join(HERMES_VENV, "bin", "python");
+// Backends that run agent tools (the dashboard / TUI chat gateway and the CLI
+// chat fallback) need the console `python.exe` instead. `pythonw.exe` has no
+// console, so every console program the agent starts under it (bash, git,
+// node, cmd, LSP servers) allocates its own visible window — one per tool
+// call. `python.exe` spawned with `windowsHide` and without `detached` owns a
+// windowless console that all of those descendants inherit, so nothing shows.
+// Verified from Electron on Windows 11; `detached: true` gives the backend a
+// visible console, so detached spawns keep using HERMES_PYTHON.
+export const HERMES_BACKEND_PYTHON = IS_WINDOWS
+  ? join(HERMES_VENV, "Scripts", "python.exe")
+  : HERMES_PYTHON;
 export const HERMES_SCRIPT = IS_WINDOWS
   ? join(HERMES_VENV, "Scripts", "hermes.exe")
   : join(HERMES_REPO, "hermes");

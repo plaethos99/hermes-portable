@@ -22,6 +22,12 @@ The portable home ships its own agent checkout and interpreter, so startup does 
 
 `runtime/hermes/hermes-agent` is the agent source plus its virtual environment, and `runtime/python` is a relocatable CPython 3.14. Windows venv launchers require an absolute `home`, so [[src/main/portable-layout.ts#writeBundledPyvenv]] rewrites `pyvenv.cfg` to this folder's interpreter on every launch. [[src/main/installer.ts#checkInstallStatus]] treats `venv/Scripts/pythonw.exe` and `hermes.exe` as the installed agent and skips the welcome installer. `Run-Portable.cmd` sets the portable env and starts Electron directly, so the other machine does not need Node.
 
+## Backend console on Windows
+
+Backends that run agent tools start under the venv's console `python.exe`, so tool commands share one hidden console instead of each opening a window.
+
+[[src/main/installer.ts#HERMES_BACKEND_PYTHON]] is used for the dashboard / TUI chat gateway and the CLI chat fallback. `pythonw.exe` ([[src/main/installer.ts#HERMES_PYTHON]]) has no console, so every bash, git, node, or LSP child the agent started opened its own visible window, one per tool call. Spawned with `windowsHide` and not detached, `python.exe` owns a windowless console its descendants inherit. `detached: true` gives it a visible console instead, so detached gateway spawns stay on `pythonw.exe`.
+
 ## Portable launcher
 
 `Hermes.exe` is the file you double-click. It keeps the agent, Electron profile, and scratch files in the same folder as the exe, then starts the bundled app without an installer or a download.
