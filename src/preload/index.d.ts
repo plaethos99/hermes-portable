@@ -13,6 +13,7 @@ import type {
 } from "../shared/wallets";
 import type { TokenBalancesResponse } from "../shared/tokens";
 import type { CustomProviderRecord } from "../shared/custom-providers";
+import type { CliAgentStatusResponse } from "../shared/cli-agents";
 import type {
   DeviceCodeInfo,
   EnsureHermesOneKeyResult,
@@ -313,6 +314,18 @@ interface HermesAPI {
   getOAuthProviderStatuses: (
     profile?: string,
   ) => Promise<Record<string, boolean>>;
+
+  // Coding-agent CLI subscriptions (Grok Build, Antigravity)
+  getCliAgentStatuses: (
+    profile?: string,
+    refresh?: boolean,
+  ) => Promise<CliAgentStatusResponse>;
+  setCliAgentEnabled: (
+    id: string,
+    enabled: boolean,
+    profile?: string,
+  ) => Promise<{ success: boolean; error?: string }>;
+  openCliAgentSignIn: (id: string) => Promise<boolean>;
   onOAuthLoginProgress: (callback: (chunk: string) => void) => () => void;
 
   // Hermes account sign-in (device authorization grant)

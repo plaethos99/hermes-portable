@@ -66,6 +66,30 @@ export default {
     minimaxDesc: "Use your MiniMax subscription",
     nousDesc: "Sign in with your Nous Portal subscription",
   },
+  cliAgents: {
+    sectionTitle: "Coding agent subscriptions",
+    sectionHint:
+      "Coding-agent CLIs you already pay for. Once a CLI is signed in, switch it on and Hermes can hand coding tasks to it. Your chat model stays the same.",
+    remoteHint:
+      "Only available when Hermes runs on this computer. These CLIs run locally.",
+    refresh: "Refresh",
+    checking: "Checking…",
+    grokName: "Grok Build",
+    grokDesc: "xAI's coding agent (grok), on your SuperGrok / X Premium+ plan",
+    agyName: "Antigravity",
+    agyDesc: "Google's coding agent (agy), on your Antigravity plan",
+    notInstalled: "Not installed. Install it, then press Refresh:",
+    notSignedIn: "Installed, not signed in",
+    signInUnknown: "Installed · couldn't confirm sign-in",
+    ready: "Signed in · {{version}}",
+    signIn: "Sign in",
+    signInHint:
+      "Finish signing in in the terminal window that opened, then press Refresh.",
+    signInFailed: "Couldn't open a terminal. Run {{command}} yourself.",
+    useLabel: "Let Hermes use it",
+    enableFirst: "Sign in first to switch this on.",
+    toggleFailed: "Couldn't update the skill.",
+  },
   hermesAccount: {
     sectionTitle: "Hermes One account",
     sectionHint:

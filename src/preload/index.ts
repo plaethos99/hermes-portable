@@ -14,6 +14,7 @@ import type {
 } from "../shared/wallets";
 import type { TokenBalancesResponse } from "../shared/tokens";
 import type { CustomProviderRecord } from "../shared/custom-providers";
+import type { CliAgentStatusResponse } from "../shared/cli-agents";
 import type {
   MessagingPlatformsResponse,
   MessagingPlatformTestResponse,
@@ -243,6 +244,19 @@ const hermesAPI = {
     profile?: string,
   ): Promise<Record<string, boolean>> =>
     ipcRenderer.invoke("get-oauth-provider-statuses", profile),
+  getCliAgentStatuses: (
+    profile?: string,
+    refresh?: boolean,
+  ): Promise<CliAgentStatusResponse> =>
+    ipcRenderer.invoke("cli-agents-status", profile, refresh),
+  setCliAgentEnabled: (
+    id: string,
+    enabled: boolean,
+    profile?: string,
+  ): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke("cli-agent-set-enabled", id, enabled, profile),
+  openCliAgentSignIn: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke("cli-agent-sign-in", id),
   onOAuthLoginProgress: (callback: (chunk: string) => void): (() => void) => {
     const handler = (_event: Electron.IpcRendererEvent, chunk: unknown): void =>
       callback(String(chunk));

@@ -23,6 +23,13 @@ import type {
   DesktopSessionLocalError,
 } from "../../shared/session-continuation";
 import { stageAttachment, clearStagedAttachments } from "../attachment-staging";
+import {
+  getCliAgentStatuses,
+  isCliAgentId,
+  openCliAgentSignIn,
+  setCliAgentEnabled,
+} from "../cli-agents";
+import type { CliAgentStatusResponse } from "../../shared/cli-agents";
 import { persistPromptImageAttachments } from "../session-attachment-store";
 import {
   discoverProviderModels,
@@ -2814,6 +2821,36 @@ export function registerIpcHandlers(context: IpcContext): void {
       return uninstallSkill(name, _profile);
     },
   );
+
+  // Coding-agent CLI subscriptions (Grok Build, Antigravity). They run on
+  // this machine, so they only apply to a local Hermes.
+  ipcMain.handle(
+    "cli-agents-status",
+    async (
+      _event,
+      profile?: string,
+      refresh?: boolean,
+    ): Promise<CliAgentStatusResponse> => {
+      if (isRemoteOnlyMode()) return { supported: false, agents: [] };
+      return {
+        supported: true,
+        agents: await getCliAgentStatuses(profile, refresh === true),
+      };
+    },
+  );
+  ipcMain.handle(
+    "cli-agent-set-enabled",
+    (_event, id: string, enabled: boolean, profile?: string) => {
+      if (isRemoteOnlyMode() || !isCliAgentId(id)) {
+        return { success: false, error: "Unavailable for this connection." };
+      }
+      return setCliAgentEnabled(id, enabled === true, profile);
+    },
+  );
+  ipcMain.handle("cli-agent-sign-in", (_event, id: string) => {
+    if (isRemoteOnlyMode() || !isCliAgentId(id)) return false;
+    return openCliAgentSignIn(id);
+  });
 
   // Session cache (fast local cache with generated titles)
   ipcMain.handle(
