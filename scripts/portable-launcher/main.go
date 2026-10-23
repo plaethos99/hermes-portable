@@ -2,10 +2,13 @@ package main
 
 import (
 	"crypto/rand"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
+	"strings"
 	"syscall"
 	"unsafe"
 )
@@ -82,6 +85,7 @@ func main() {
 		"HERMES_NO_AUTO_UPDATE":         "1",
 		"UV_OFFLINE":                    "1",
 		"PIP_NO_INDEX":                  "1",
+		"PATH":                          joinPath(append(storePath(hermesHome), splitPath(filterPath(os.Getenv("PATH")))...)),
 	})
 	if err := command.Run(); err != nil {
 		fail("Hermes failed to start.\n" + err.Error())
@@ -115,6 +119,53 @@ func writePyvenv(pythonHome, hermesHome string) {
 		pythonExe,
 	)
 	_ = os.WriteFile(filepath.Join(venv, "pyvenv.cfg"), []byte(body), 0o644)
+}
+
+// storePath returns the bundled tool folders (ffmpeg, node, ripgrep, ...) that
+// PM recorded in tools\facts.json. Installed agents get these from a shell
+// activation step; the portable folder has none, so the launcher prepends them
+// after filterPath, which would otherwise drop them for containing "hermes".
+func storePath(hermesHome string) []string {
+	store := filepath.Join(hermesHome, "tools")
+	raw, err := os.ReadFile(filepath.Join(store, "facts.json"))
+	if err != nil {
+		return nil
+	}
+	var facts struct {
+		Packages map[string]struct {
+			Env map[string]json.RawMessage `json:"env"`
+		} `json:"packages"`
+	}
+	if json.Unmarshal(raw, &facts) != nil {
+		return nil
+	}
+	names := make([]string, 0, len(facts.Packages))
+	for name := range facts.Packages {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	var dirs []string
+	for _, name := range names {
+		value, ok := facts.Packages[name].Env["PATH"]
+		if !ok {
+			continue
+		}
+		var list []string
+		if json.Unmarshal(value, &list) != nil {
+			var one string
+			if json.Unmarshal(value, &one) != nil {
+				continue
+			}
+			list = []string{one}
+		}
+		for _, dir := range list {
+			dir = filepath.Clean(strings.ReplaceAll(dir, "{{store}}", store))
+			if info, err := os.Stat(dir); err == nil && info.IsDir() {
+				dirs = append(dirs, dir)
+			}
+		}
+	}
+	return dirs
 }
 
 // sandboxedEnviron drops credentials and agent locations inherited from the

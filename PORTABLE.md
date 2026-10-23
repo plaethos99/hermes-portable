@@ -4,11 +4,13 @@ This file records the work done to make Hermes Desktop run from one folder, with
 
 The folder you copy to another computer is:
 
-`D:\hermes-desktop\dist\HermesPortable`
+`C:\Users\Admin\Downloads\hermes-desktop\dist\HermesPortable`
 
 Start it by double-clicking:
 
-`D:\hermes-desktop\dist\HermesPortable\Hermes.exe`
+`C:\Users\Admin\Downloads\hermes-desktop\dist\HermesPortable\Hermes.exe`
+
+On 2026-10-23 the checkout moved from `D:\hermes-desktop` to `C:\Users\Admin\Downloads\hermes-desktop`. Its old build output and caches on `D:` were deleted, and the portable folder was rebuilt in the new location. The `D:` paths below record where the earlier work happened.
 
 ## What you asked for
 
@@ -32,6 +34,7 @@ Start it by double-clicking:
 | Hermes home (config, sessions, logs) | `dist\HermesPortable\runtime\hermes` |
 | Electron profile | `dist\HermesPortable\runtime\electron` |
 | Scratch files | `dist\HermesPortable\runtime\scratch` |
+| Bundled tools (cua-driver, agent-browser, Chromium, ffmpeg, node, ripgrep) | `dist\HermesPortable\runtime\hermes\tools` |
 
 `Hermes.exe` is a small launcher. It is not a self-extracting archive. The rest of `HermesPortable` has to travel with it. Copy the whole folder, then click `Hermes.exe` on the other computer.
 
@@ -64,7 +67,8 @@ Left in place on purpose:
 3. Sets `PYTHONNOUSERSITE=1` so Python does not read or write `%APPDATA%\Python`.
 4. Rewrites `runtime\hermes\hermes-agent\venv\pyvenv.cfg` so the virtual environment points at `runtime\python` inside this folder. Windows does not accept a relative `home` in that file, so the launcher writes the absolute path on every start. After the folder is copied, the next click updates the path.
 5. Drops inherited `HERMES_*`, `ERP_*`, `API_SERVER_KEY`, `*_API_KEY`, and `*_TOKEN` values, plus `PYTHONPATH` and `VIRTUAL_ENV`. `PATH` entries that contain `hermes` or `erp-agent` are removed. This is what keeps the exe from attaching to another agent already installed on the machine.
-6. Starts `app\hermes-agent.exe`. It does not start `electron-vite`, and the other computer does not need Node.js.
+6. Puts the bundled tool folders listed in `runtime\hermes\tools\facts.json` (ffmpeg, node, ripgrep, cua-driver, agent-browser) at the front of `PATH`. This runs after step 5, which would otherwise remove them because their path contains `hermes`.
+7. Starts `app\hermes-agent.exe`. It does not start `electron-vite`, and the other computer does not need Node.js.
 
 `HERMES_PORTABLE=1` also turns off the desktop auto-updater, so launch does not download an update.
 
@@ -89,6 +93,14 @@ All provider and search API SDKs are pre-installed into the bundled venv so no n
 - `boto3`: AWS Bedrock
 - `duckduckgo_search`, `ddgs`, `tavily-python`, `exa_py`, `firecrawl-py`: Web Search and Extraction tools
 
+The agent's package manager store (`runtime\hermes\tools`) is bundled too, so these tools work without a download:
+
+- `cua-driver`: the `computer_use` tool (screenshots, clicks, and typing in any desktop app)
+- `agent-browser` and Chromium: the `browser_*` tools
+- `ffmpeg`: audio and video conversion and editing
+- `node`, `npm`, `ripgrep`: required by the store check, and used for code search and JavaScript tooling
+- PM's own `python` and `uv` entries, which `hermes pm` creates the first time it runs
+
 ## Fresh install, not your old profiles
 
 The first portable folder had been filled with data moved from `C:`, including the `erp-info`, `erp-operator`, and `mine` profiles. That was removed.
@@ -112,15 +124,16 @@ powershell -ExecutionPolicy Bypass -File scripts/build-portable.ps1
 
 This script:
 1. Verifies all 13 API SDKs in the embedded Python virtual environment.
-2. Compiles `Hermes.exe` from `scripts\portable-launcher\main.go` with `-H windowsgui` and sandboxing flags.
-3. Builds the production UI via `electron-vite build` with caches redirected to `runtime\`.
-4. Builds the unpacked Electron app via `electron-builder --dir --config.directories.output=dist/builder`.
-5. Mirrors the clean Python runtime and `hermes-agent` venv (excluding `.git`, cache files, and personal data).
-6. Ensures `PORTABLE` marker, directory layout, and offline environment variables are in place.
+2. Installs `cua-driver`, `agent-browser` (with Chromium), `ffmpeg`, `node`, `npm`, and `ripgrep` into `runtime\hermes\tools` with `hermes pm install`, then checks the store. The first build downloads about 1 GB; later builds only re-verify.
+3. Compiles `Hermes.exe` from `scripts\portable-launcher\main.go` with `-H windowsgui` and sandboxing flags. The Go build cache stays in `runtime\cache\go`.
+4. Builds the production UI via `electron-vite build` with caches redirected to `runtime\`.
+5. Builds the unpacked Electron app via `electron-builder --dir --config.directories.output=dist/builder`.
+6. Mirrors the clean Python runtime, the `hermes-agent` venv (excluding `.git`, cache files, and personal data), and the tool store.
+7. Ensures `PORTABLE` marker, directory layout, and offline environment variables are in place.
 
 ## How to use on another computer
 
-1. Copy the entire `D:\hermes-desktop\dist\HermesPortable` folder to any drive or computer (e.g. `C:\HermesPortable`, `E:\HermesPortable`, USB drive).
+1. Copy the entire `dist\HermesPortable` folder to any drive or computer (e.g. `C:\HermesPortable`, `E:\HermesPortable`, USB drive).
 2. Double-click `Hermes.exe` inside that folder.
 3. Set your provider and API key in the app Settings/Providers (DeepSeek, OpenAI, Anthropic, Gemini, Groq, etc.).
 4. Start chatting. Nothing will download, and nothing will touch `C:\Users\...\AppData` or Windows temp.

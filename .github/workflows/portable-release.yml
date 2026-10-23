@@ -1,0 +1,176 @@
+name: Portable Release
+
+# Builds the self-contained Windows portable folder (scripts/build-portable.ps1)
+# and the standard macOS app (arm64 + x64), then publishes them as one GitHub
+# release. Push a tag like `v0.7.7-portable.1` to run it.
+#
+# The macOS app is ad-hoc signed and not notarized (no Apple Developer ID in
+# this repo). It installs the Hermes agent into ~/.hermes on first launch;
+# only the Windows build bundles the agent, Python, and tools offline.
+on:
+  push:
+    tags:
+      - "v*-portable*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: portable-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows_portable:
+    name: Build Windows portable
+    runs-on: windows-latest
+    timeout-minutes: 120
+    steps:
+      # The bundled agent's node_modules nests deeper than MAX_PATH.
+      - name: Enable long paths
+        run: git config --system core.longpaths true
+
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: scripts/portable-launcher/go.mod
+          cache: false
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build portable folder
+        shell: pwsh
+        run: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-portable.ps1
+
+      # GitHub caps each release asset at 2 GiB. A single zip is the easy
+      # download; if it does not fit, fall back to 7z volumes.
+      - name: Package portable folder
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = "Stop"
+          $tag = "${{ github.ref_name }}"
+          New-Item -ItemType Directory -Force release | Out-Null
+          $zip = Join-Path $PWD "release\HermesPortable-$tag-win-x64.zip"
+          Push-Location dist
+          & 7z a -tzip -mx=5 $zip HermesPortable | Out-Null
+          if ($LASTEXITCODE -ne 0) { throw "7z zip failed" }
+          Pop-Location
+          $size = (Get-Item $zip).Length
+          Write-Host "Zip size: $([math]::Round($size / 1MB)) MB"
+          if ($size -gt 2000MB) {
+            Remove-Item $zip
+            Push-Location dist
+            & 7z a -t7z -mx=7 -v1900m (Join-Path $PWD "..\release\HermesPortable-$tag-win-x64.7z") HermesPortable | Out-Null
+            if ($LASTEXITCODE -ne 0) { throw "7z split failed" }
+            Pop-Location
+          }
+          Get-ChildItem release | Format-Table Name, Length
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-portable
+          path: release/*
+          compression-level: 0
+
+  macos:
+    name: Build macOS (${{ matrix.arch }})
+    runs-on: macos-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, x64]
+    steps:
+      # runtime/ holds the Windows-only Python and agent venv; the Mac app
+      # installs its own agent, so skip those ~56k files.
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: |
+            /*
+            !/runtime/
+          sparse-checkout-cone-mode: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Rebuild native dependencies for target arch
+        run: npx electron-builder install-app-deps --arch=${{ matrix.arch }}
+
+      - name: Build app
+        run: npm run build
+
+      # identity "-" ad-hoc signs so Apple Silicon will launch it; hardened
+      # runtime and notarization need a real Developer ID, so both are off.
+      - name: Package macOS artifacts
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: "false"
+        run: >
+          npx electron-builder --mac dmg zip --${{ matrix.arch }} --publish never
+          -c.mac.identity=-
+          -c.mac.hardenedRuntime=false
+          -c.mac.notarize=false
+
+      - name: Verify native module architecture
+        run: bash scripts/verify-native-module-architecture.sh "${{ matrix.arch }}"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: mac-${{ matrix.arch }}
+          path: |
+            dist/*.dmg
+            dist/*.zip
+          compression-level: 0
+
+  publish:
+    name: Publish release
+    needs: [windows_portable, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -la artifacts
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: Hermes Portable ${{ github.ref_name }}
+          body: |
+            ## Windows (portable, offline)
+
+            Download `HermesPortable-${{ github.ref_name }}-win-x64.zip` (or every `.7z.00N` part, then open `.7z.001` with 7-Zip), extract it anywhere, and double-click `HermesPortable\Hermes.exe`.
+
+            Everything runs from that folder: the Electron app, Python, the Hermes agent with its API SDKs, and the agent's tools (`cua-driver` for computer control, `agent-browser` with Chromium, `ffmpeg`, `node`, `ripgrep`). Nothing is installed and nothing downloads at launch. Set your provider or sign in with your Grok / Gemini subscription in Settings → Providers.
+
+            ## macOS (standard app)
+
+            `hermes-desktop-*-arm64.dmg` for Apple Silicon, `hermes-desktop-*-x64.dmg` for Intel.
+
+            - The app is not notarized. After dragging it to Applications, open it once, then go to System Settings → Privacy & Security and click **Open Anyway**. Or run `xattr -cr "/Applications/Hermes One.app"`.
+            - On first launch it installs the Hermes agent into `~/.hermes`, including `cua-driver`, `agent-browser`, and `ffmpeg`. This needs an internet connection.
+            - For computer control, allow **CuaDriver** under Accessibility and Screen Recording when macOS asks.
+          generate_release_notes: true
+          files: artifacts/*
