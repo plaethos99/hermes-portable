@@ -22,11 +22,31 @@ The portable home ships its own agent checkout and interpreter, so startup does 
 
 `runtime/hermes/hermes-agent` is the agent source plus its virtual environment, and `runtime/python` is a relocatable CPython 3.14. Windows venv launchers require an absolute `home`, so [[src/main/portable-layout.ts#writeBundledPyvenv]] rewrites `pyvenv.cfg` to this folder's interpreter on every launch. [[src/main/installer.ts#checkInstallStatus]] treats `venv/Scripts/pythonw.exe` and `hermes.exe` as the installed agent and skips the welcome installer. `Run-Portable.cmd` sets the portable env and starts Electron directly, so the other machine does not need Node.
 
+## Backend console on Windows
+
+Backends that run agent tools start under the venv's console `python.exe`, so tool commands share one hidden console instead of each opening a window.
+
+[[src/main/installer.ts#HERMES_BACKEND_PYTHON]] is used for the dashboard / TUI chat gateway and the CLI chat fallback. `pythonw.exe` ([[src/main/installer.ts#HERMES_PYTHON]]) has no console, so every bash, git, node, or LSP child the agent started opened its own visible window, one per tool call. Spawned with `windowsHide` and not detached, `python.exe` owns a windowless console its descendants inherit. `detached: true` gives it a visible console instead, so detached gateway spawns stay on `pythonw.exe`.
+
 ## Portable launcher
 
 `Hermes.exe` is the file you double-click. It keeps the agent, Electron profile, and scratch files in the same folder as the exe, then starts the bundled app without an installer or a download.
 
 [[scripts/portable-launcher/main.go#main]] resolves the exe's own directory, rewrites the Python virtual environment to `runtime/python`, ensures a local `API_SERVER_KEY` in `.env`, and starts `app/hermes-agent.exe` passing `--user-data-dir` directly so Chromium never probes `%APPDATA%`. It sets `HERMES_DISABLE_LAZY_INSTALLS=1`, `UV_OFFLINE=1`, `PIP_NO_INDEX=1`, and drops inherited credentials so the process is sandboxed and never attempts network downloads. `dist/HermesPortable` is a self-contained, clean home: the full agent runtime and API SDKs are bundled, with no profiles or personal keys copied in. Copy that folder and click `Hermes.exe`.
+
+### Bundled tool store
+
+The portable folder ships the agent's package-manager store so desktop control, the browser, and media tools work offline with lazy installs turned off.
+
+`scripts/build-portable.ps1` runs `hermes pm install cua-driver agent-browser ffmpeg node npm ripgrep` against `runtime/hermes` (agent-browser pulls in Chromium), checks the store with `pm.install.check`, and mirrors `runtime/hermes/tools` into the portable home. PM records entries in `tools/facts.json` with `{{store}}`-relative paths, so the copy stays valid after the folder moves. node, npm, and ripgrep are required by that check.
+
+`computer_use`, the browser tools, and Chromium resolve their binaries from the store directly. Tools that call `which` (ffmpeg, node, rg) need PATH. Installed agents get it from a shell activation step, so [[scripts/portable-launcher/main.go#storePath]] expands the PATH entries from `facts.json` and prepends them after the launcher's PATH filter, which drops anything containing `hermes`.
+
+## Portable release workflow
+
+Pushing a `v*-portable*` tag builds the Windows portable folder and the standard macOS app in GitHub Actions and publishes both as one release.
+
+`.github/workflows/portable-release.yml` runs `scripts/build-portable.ps1` on a Windows runner with long paths on, then zips `dist/HermesPortable`, splitting it into 7z volumes if the zip passes GitHub's 2 GiB asset limit. The macOS jobs skip `runtime/` with a sparse checkout, because those files are the Windows Python and venv. They build arm64 and x64 `.dmg`/`.zip` files, ad-hoc signed (`mac.identity=-`) with hardened runtime and notarization off, since the repo has no Apple Developer ID. The Mac app is not portable. It installs the agent into `~/.hermes` on first launch, and that install includes cua-driver, agent-browser, and ffmpeg. The upstream `release.yml` stays for the original project's signed releases.
 
 ## Portable build inputs in git
 

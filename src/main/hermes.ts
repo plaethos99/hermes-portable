@@ -22,6 +22,7 @@ import {
   HERMES_HOME,
   HERMES_REPO,
   HERMES_PYTHON,
+  HERMES_BACKEND_PYTHON,
   hermesCliArgs,
   getEnhancedPath,
 } from "./installer";
@@ -703,7 +704,7 @@ class TuiGatewayClient {
       "--port",
       String(this.port),
     ]);
-    const proc = spawn(HERMES_PYTHON, args, {
+    const proc = spawn(HERMES_BACKEND_PYTHON, args, {
       cwd: HERMES_REPO,
       env: dashboardEnv,
       stdio: ["ignore", "pipe", "pipe"],
@@ -2884,7 +2885,7 @@ function sendMessageViaCli(
     delete env.OPENROUTER_BASE_URL;
   }
 
-  const proc = spawn(HERMES_PYTHON, args, {
+  const proc = spawn(HERMES_BACKEND_PYTHON, args, {
     cwd: HERMES_REPO,
     env,
     stdio: ["ignore", "pipe", "pipe"],

@@ -56,6 +56,14 @@ OAuth usability is read from the machine that owns the active model library, pre
 
 Dashboard-backed Remote and SSH connections call the authenticated `/api/providers/oauth` endpoint through [[src/main/remote-provider-statuses.ts#remoteGetOAuthProviderStatuses]], scoped to the selected named profile when present, reduce its response to supported-provider booleans in the main process, and discard every token preview and metadata field. Legacy SSH reads the selected remote profile's `auth.json` through [[src/main/ssh-remote.ts#sshGetOAuthProviderStatuses]], with default-profile fallback and boolean-only output. Direct Remote legacy transport has no credential-status API and therefore fails closed instead of consulting desktop-local state. Status failures do not prevent the picker from opening; they only omit unverified OAuth entries. [[tests/remote-provider-statuses.test.ts]] covers dashboard authentication and profile scoping, boolean reduction, allowlisting, and malformed-response fail-closed behavior.
 
+### Coding-agent CLI subscriptions
+
+Grok Build (`grok`) and Antigravity (`agy`) get Providers cards, but they are delegation targets, not chat models: switching one on lets Hermes hand coding tasks to that CLI.
+
+[[src/renderer/src/components/CliAgentsSection.tsx]] reads statuses from [[src/main/cli-agents.ts#getCliAgentStatuses]]. That finds each binary in its installer's folder or on PATH, reads its version, and checks sign-in. Grok counts as signed in when `~/.grok/auth.json` has an account entry ([[src/main/cli-agents.ts#grokAuthSignedIn]]). `agy` keeps tokens in the OS keyring, so `agy models` is run and a model list or auth prompt decides it ([[src/main/cli-agents.ts#agyModelsSignedIn]]). Statuses are cached for a minute because the `agy` probe starts the CLI.
+
+The switch installs or removes the matching official skill (`autonomous-ai-agents/grok`, `autonomous-ai-agents/antigravity-cli`) through [[src/main/cli-agents.ts#setCliAgentEnabled]]. It stays disabled while the CLI reports signed out. **Sign in** runs the CLI's own login in a visible terminal ([[src/main/cli-agents.ts#openCliAgentSignIn]]), so Hermes never handles those tokens. Agent harnesses must not reuse Antigravity / Gemini CLI OAuth tokens, so no card turns them into a Hermes model provider. Remote and SSH connections hide the cards because the CLIs run on this machine.
+
 ### Native keys without a setup card still route
 
 Native-provider keys with no `PROVIDERS.setup` card carrying them (or only the OAuth variant, `envKey: ""`) must still resolve to their agent slug, or the picker silently drops them even with a key set — the Nous-missing-from-Change-modal bug.

@@ -15,6 +15,7 @@ import {
 import { useI18n } from "../../components/useI18n";
 import BrandLogo from "../../components/common/BrandLogo";
 import OAuthLoginModal from "../../components/OAuthLoginModal";
+import CliAgentsSection from "../../components/CliAgentsSection";
 import HermesAccountModal from "../../components/HermesAccountModal";
 import ProviderKeysSection from "../../components/ProviderKeysSection";
 import RegistryBrowserModal from "../../components/RegistryBrowserModal";
@@ -1086,6 +1087,8 @@ function Providers({
               ))}
             </div>
           </div>
+
+          <CliAgentsSection profile={profile} />
 
           {oauthModal && (
             <OAuthLoginModal

@@ -7,6 +7,12 @@ $ErrorActionPreference = "Stop"
 $Root = Split-Path -Parent $PSScriptRoot
 Set-Location $Root
 
+# Go defaults its build cache to %LOCALAPPDATA%\go-build; keep it in the checkout.
+$env:GOCACHE = Join-Path $Root "runtime\cache\go"
+$env:GOMODCACHE = Join-Path $Root "runtime\cache\gomod"
+$env:GOTMPDIR = Join-Path $Root "runtime\scratch"
+New-Item -ItemType Directory -Force $env:GOCACHE, $env:GOMODCACHE, $env:GOTMPDIR | Out-Null
+
 Write-Host "=========================================" -ForegroundColor Cyan
 Write-Host " Building Hermes Portable Distribution   " -ForegroundColor Cyan
 Write-Host "=========================================" -ForegroundColor Cyan
@@ -44,7 +50,7 @@ foreach ($link in @(
 }
 
 # 2. Verify all API SDKs in venv
-Write-Host "[1/6] Verifying API SDKs in Python venv..." -ForegroundColor Yellow
+Write-Host "[1/7] Verifying API SDKs in Python venv..." -ForegroundColor Yellow
 $VerifyCmd = @"
 mods = ['openai', 'anthropic', 'aiohttp', 'httpx', 'pydantic', 'duckduckgo_search', 'ddgs', 'tavily', 'exa_py', 'firecrawl', 'boto3', 'google.auth', 'agent.gemini_native_adapter', 'agent.anthropic_adapter']
 missing = []
@@ -86,8 +92,50 @@ typing._eval_type = _eval_type
     Set-Content -Path $SiteCustomizeSrc -Value $SiteCustomizeContent -Encoding utf8
 }
 
-# 3. Compile Launcher
-Write-Host "[2/6] Compiling portable launcher Hermes.exe..." -ForegroundColor Yellow
+# 3. Bundled tools
+# The portable app runs offline with lazy installs off, so every binary the agent
+# reaches for must already be in PM's store (HERMES_HOME\tools):
+#   cua-driver (computer_use), agent-browser + chromium (browser_*), ffmpeg (media),
+#   and node, npm, ripgrep, which PM's store check requires before the launcher's
+#   PATH entries mean anything. The first build downloads them; later builds re-verify.
+Write-Host "[2/7] Installing bundled tools into runtime\hermes\tools..." -ForegroundColor Yellow
+$BundledTools = @("cua-driver", "agent-browser", "ffmpeg", "node", "npm", "ripgrep")
+$ToolStore = Join-Path $Root "runtime\hermes\tools"
+$SavedEnv = @{}
+$ToolEnv = @{
+    HERMES_HOME = (Join-Path $Root "runtime\hermes")
+    TEMP = (Join-Path $Root "runtime\scratch")
+    TMP = (Join-Path $Root "runtime\scratch")
+    PYTHONNOUSERSITE = "1"
+    UV_CACHE_DIR = (Join-Path $Root "runtime\cache\uv")
+    HERMES_DISABLE_LAZY_INSTALLS = $null
+    UV_OFFLINE = $null
+    PIP_NO_INDEX = $null
+}
+foreach ($name in $ToolEnv.Keys) {
+    $SavedEnv[$name] = [Environment]::GetEnvironmentVariable($name, "Process")
+    [Environment]::SetEnvironmentVariable($name, $ToolEnv[$name], "Process")
+}
+Push-Location $AgentDir
+try {
+    & $VenvPython -m hermes_cli.main pm install @BundledTools
+    if ($LASTEXITCODE -ne 0) {
+        throw "Installing bundled tools failed"
+    }
+    $storeProblems = & $VenvPython -c "from pm.install import check; p = check(); print('; '.join(p) if p else 'OK')" 2>&1
+    if ($LASTEXITCODE -ne 0 -or "$storeProblems".Trim() -ne "OK") {
+        throw "Tool store check failed: $storeProblems"
+    }
+} finally {
+    Pop-Location
+    foreach ($name in $SavedEnv.Keys) {
+        [Environment]::SetEnvironmentVariable($name, $SavedEnv[$name], "Process")
+    }
+}
+Write-Host "  -> $($BundledTools -join ', ') ready" -ForegroundColor Green
+
+# 4. Compile Launcher
+Write-Host "[3/7] Compiling portable launcher Hermes.exe..." -ForegroundColor Yellow
 $LauncherDir = Join-Path $Root "scripts\portable-launcher"
 Push-Location $LauncherDir
 try {
@@ -100,21 +148,21 @@ try {
 }
 Write-Host "  -> Hermes.exe compiled successfully" -ForegroundColor Green
 
-# 4. Build Production UI and Unpacked App
-Write-Host "[3/6] Building production UI (electron-vite build)..." -ForegroundColor Yellow
+# 5. Build Production UI and Unpacked App
+Write-Host "[4/7] Building production UI (electron-vite build)..." -ForegroundColor Yellow
 & node scripts/run-portable.mjs electron-vite build
 if ($LASTEXITCODE -ne 0) {
     throw "electron-vite build failed"
 }
 
-Write-Host "[4/6] Building unpacked Electron app (electron-builder)..." -ForegroundColor Yellow
+Write-Host "[5/7] Building unpacked Electron app (electron-builder)..." -ForegroundColor Yellow
 & node scripts/run-portable.mjs electron-builder --dir --config.directories.output=dist/builder
 if ($LASTEXITCODE -ne 0) {
     throw "electron-builder failed"
 }
 
-# 5. Assemble HermesPortable
-Write-Host "[5/6] Assembling dist/HermesPortable..." -ForegroundColor Yellow
+# 6. Assemble HermesPortable
+Write-Host "[6/7] Assembling dist/HermesPortable..." -ForegroundColor Yellow
 $PortableDir = Join-Path $Root "dist\HermesPortable"
 $PortableRuntime = Join-Path $PortableDir "runtime"
 $PortableHermes = Join-Path $PortableRuntime "hermes"
@@ -190,8 +238,16 @@ if (-not (Test-Path $PortableAgent)) {
 # Use robocopy to mirror hermes-agent excluding .git and cache dirs
 & robocopy $AgentDir $PortableAgent /E /XD ".git" "__pycache__" ".pytest_cache" /XF "*.pyc" "*.lock" /R:1 /W:1 /NJH /NJS /NDL /NC /NS | Out-Null
 
-# 6. Final setup of clean portable directories
-Write-Host "[6/6] Finalizing clean runtime layout..." -ForegroundColor Yellow
+# Mirror PM's tool store. facts.json stores {{store}}-relative paths, so the copy
+# stays valid wherever the folder lands; leftover staging dirs and the lock stay behind.
+Write-Host "  -> Syncing bundled tools (cua-driver, agent-browser, chromium, ffmpeg, node, ripgrep)..."
+& robocopy $ToolStore (Join-Path $PortableHermes "tools") /MIR /XD ".staging-*" /XF ".install.lock" /R:1 /W:1 /NJH /NJS /NDL /NC /NS /NFL | Out-Null
+if ($LASTEXITCODE -ge 8) {
+    throw "Copying the tool store failed (robocopy exit $LASTEXITCODE)"
+}
+
+# 7. Final setup of clean portable directories
+Write-Host "[7/7] Finalizing clean runtime layout..." -ForegroundColor Yellow
 foreach ($dir in @(
     (Join-Path $PortableRuntime "electron"),
     (Join-Path $PortableRuntime "scratch"),

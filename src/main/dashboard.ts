@@ -14,6 +14,7 @@ import {
 import {
   getEnhancedPath,
   hermesCliArgs,
+  HERMES_BACKEND_PYTHON,
   HERMES_HOME,
   HERMES_PYTHON,
   HERMES_REPO,
@@ -665,7 +666,7 @@ export async function startDashboard(
 
   let proc: ChildProcess;
   try {
-    proc = spawn(HERMES_PYTHON, hermesCliArgs(cliArgs), {
+    proc = spawn(HERMES_BACKEND_PYTHON, hermesCliArgs(cliArgs), {
       cwd: HERMES_REPO,
       env: {
         ...process.env,
